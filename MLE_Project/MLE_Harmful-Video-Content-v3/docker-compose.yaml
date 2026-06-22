@@ -65,17 +65,16 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-pipeline}@postgres:5432/${POSTGRES_DB:-harmful_video}
       OLLAMA_BASE_URL: http://ollama:11434
+      PYTHONWARNINGS: "ignore::SyntaxWarning"
+      AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: "300"
+      AIRFLOW__WEBSERVER__WORKERS: "2"
     volumes:
       - ./dags:/opt/airflow/dags
       - .:/opt/airflow/project
       - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
-    command: >
-      bash -c "airflow db upgrade &&
-               airflow users create --username ${AIRFLOW_ADMIN_USER:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
-                 --firstname Admin --lastname User --role Admin --email admin@example.com &&
-               airflow webserver & airflow scheduler"
+    command: standalone
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +83,7 @@ services:
     build: .
     container_name: harmful_video_dashboard
     environment:
+      PYTHONPATH: /app          # <-- add this line
       MLFLOW_TRACKING_URI: http://mlflow:5000
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-pipeline}@postgres:5432/${POSTGRES_DB:-harmful_video}
       OLLAMA_BASE_URL: http://ollama:11434

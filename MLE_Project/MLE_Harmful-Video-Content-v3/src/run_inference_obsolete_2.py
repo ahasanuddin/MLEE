@@ -13,10 +13,7 @@ from src.scoring.metadata_scoring import score_metadata
 from src.scoring.composite import score_match, classify_duplicate_type
 from src.llm_verifier import decide
 
-# Candidates surfaced per video = ALL matches above the text gate, ranked.
-# Analysts review the full cluster and decide lane assignment. Set an int to cap
-# the list if a review page ever gets unwieldy; None = show every above-gate match.
-MAX_CANDIDATES = None
+TOP_N_MATCHES = 5  # candidate duplicates surfaced per video for the reviewer
 
 MEDIUM_TEXT_COLS = ["video_id", "title_text", "ocr_text", "asr_text"]
 
@@ -119,7 +116,7 @@ def run_inference(input_df, seed_df, matcher, model, scaler, manifest):
             results.append(_blank(vid, "clean", harmful_prob, "ALLOW", "layer1 classified as clean"))
             continue
 
-        matches = matcher.match(_query_texts(row))  # all seeds, ranked best first
+        matches = matcher.match(_query_texts(row), top_n=TOP_N_MATCHES)
         if not matches:
             results.append(_blank(vid, "harmful", harmful_prob, "HUMAN REVIEW",
                                   "harmful but no seed match", lane="investigation", priority="normal"))
@@ -143,12 +140,9 @@ def run_inference(input_df, seed_df, matcher, model, scaler, manifest):
         lane = sm["lane"] or "investigation"
         priority = verdict.get("priority") or ("urgent" if sm["duplicate_type"] in ("cross_medium", "re_authored") else "normal")
 
-        # full candidate cluster for the reviewer: every match above the gate
-        above_gate = [m for m in matches if m["text_score"] >= TEXT_CUTOFF]
-        if MAX_CANDIDATES:
-            above_gate = above_gate[:MAX_CANDIDATES]
-        candidates = [_candidate(m, row_dict, seed_lookup) for m in above_gate]
-        n_candidates = len(candidates)
+        # full candidate cluster for the reviewer (best first)
+        candidates = [_candidate(m, row_dict, seed_lookup) for m in matches]
+        n_candidates = sum(1 for c in candidates if c["text_score"] >= TEXT_CUTOFF)
 
         results.append({
             "video_id": vid, "layer1_label": "harmful", "harmful_prob": harmful_prob,

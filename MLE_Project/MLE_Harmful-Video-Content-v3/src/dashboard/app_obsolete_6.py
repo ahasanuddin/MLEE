@@ -102,6 +102,48 @@ def diff_pair(a, b):
             f"<div style='{_DIFF_WRAP}'>{''.join(right)}</div>")
 
 
+def render_overview(df):
+    """Queue-level summary: headline metrics + distribution charts for the split."""
+    st.subheader("Queue overview")
+    total = len(df)
+    review = int((df["decision"] == "HUMAN REVIEW").sum())
+    allow = int((df["decision"] == "ALLOW").sum())
+    cross = int(df["is_cross_medium"].fillna(False).astype(bool).sum()) if "is_cross_medium" in df else 0
+    urgent = int((df["priority"] == "urgent").sum()) if "priority" in df else 0
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Videos", total)
+    m2.metric("Human review", review)
+    m3.metric("Allowed", allow)
+    m4.metric("Cross-medium", cross)
+    m5.metric("Urgent", urgent)
+
+    ch1, ch2, ch3 = st.columns(3)
+    with ch1:
+        st.caption("Decisions")
+        st.bar_chart(df["decision"].value_counts())
+    with ch2:
+        st.caption("Duplicate types")
+        dt = df["duplicate_type"].dropna() if "duplicate_type" in df else pd.Series(dtype=str)
+        st.bar_chart(dt.value_counts()) if len(dt) else st.info("None above gate.")
+    with ch3:
+        st.caption("Review lanes")
+        ln = df["lane"].dropna() if "lane" in df else pd.Series(dtype=str)
+        st.bar_chart(ln.value_counts()) if len(ln) else st.info("No lanes assigned.")
+
+    mc = pd.to_numeric(df.get("match_confidence"), errors="coerce").dropna()
+    if len(mc):
+        st.caption("Match-confidence distribution")
+        fig, ax = plt.subplots(figsize=(8, 2.3))
+        ax.hist(mc, bins=20, range=(0, 1), color="#6366f1", edgecolor="white")
+        ax.axvline(0.55, color="#ef4444", linestyle="--", linewidth=1, label="text gate 0.55")
+        ax.set_xlabel("match confidence")
+        ax.set_ylabel("videos")
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        st.pyplot(fig)
+
+
 def score_bar(label, value, weight=None):
     wtxt = f" (weight {weight:.0%})" if weight is not None else ""
     if value is None or pd.isna(value):
@@ -174,6 +216,9 @@ def main():
             return
 
         video_id = st.selectbox("Select video", filtered["video_id"].tolist())
+
+    render_overview(results_df)
+    st.divider()
 
     row = results_df[results_df["video_id"] == video_id].iloc[0].to_dict()
     decision = row.get("decision", "UNKNOWN")

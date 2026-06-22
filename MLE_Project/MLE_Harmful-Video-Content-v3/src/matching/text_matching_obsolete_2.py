@@ -71,25 +71,20 @@ class GridTextMatcher:
         self.row_medium = np.load(os.path.join(MODELS_DIR, "grid_row_medium.npy"), allow_pickle=True).tolist()
         return self
 
-    def match(self, query_texts, top_n=None, top_k=None):
+    def match(self, query_texts, top_n=5, top_k=15):
         """query_texts: dict {title, ocr, asr}. Returns a ranked list (best first)
-        of candidate matches, each a dict:
+        of up to top_n candidate matches, each a dict:
             {seed_video_id, text_score, q_medium, c_medium,
              is_cross_medium, medium_transition}
-        top_n=None returns ALL seeds ranked (gate-filtering is the caller's job);
-        pass an int to cap. top_k is the FAISS search depth per medium and
-        defaults to the full index so every seed's best cell is considered.
+        Empty list if nothing matched. top_k is the FAISS search depth per medium.
         """
-        if not self.index or self.index.ntotal == 0:
-            return []
-        k = min(top_k or self.index.ntotal, self.index.ntotal)
         per_seed = {}  # seed_id -> best (score, q_medium, c_medium)
         for qm in MEDIUMS:
             qt = _clean(query_texts.get(f"{qm}_text"))
             if qt is None:
                 continue
             qv = self._encode([qt])
-            scores, idxs = self.index.search(qv, k)
+            scores, idxs = self.index.search(qv, min(top_k, self.index.ntotal))
             for score, ridx in zip(scores[0], idxs[0]):
                 if ridx == -1:
                     continue
@@ -100,9 +95,7 @@ class GridTextMatcher:
                     per_seed[sid] = (s, qm, cm)
         if not per_seed:
             return []
-        ranked = sorted(per_seed.items(), key=lambda kv: kv[1][0], reverse=True)
-        if top_n is not None:
-            ranked = ranked[:top_n]
+        ranked = sorted(per_seed.items(), key=lambda kv: kv[1][0], reverse=True)[:top_n]
         return [
             {
                 "seed_video_id": sid,
