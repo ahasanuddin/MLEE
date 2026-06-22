@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS611-MLE · Group 2 · MLOps Pipeline Architecture v2</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#e8edf2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;padding:16px}
+  h1{text-align:center;font-size:15px;font-weight:800;color:#0f172a;padding:8px 0 3px}
+  .sub{text-align:center;font-size:9px;color:#64748b;margin-bottom:14px}
+  .change-banner{background:#f3e8ff;border:1.5px solid #7c3aed;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:8.5px;color:#4c1d95;font-weight:700;text-align:center}
+
+  /* SECTIONS */
+  .sec{border-radius:10px;padding:12px 14px 16px;margin-bottom:8px;border-width:2.5px;border-style:dashed;position:relative}
+  .sec-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+  .sec-lbl{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+  .badge{font-size:7.5px;font-weight:700;padding:2px 8px;border-radius:20px;border-width:1px;border-style:solid;white-space:nowrap}
+  .done{background:#dcfce7;color:#15803d;border-color:#16a34a}
+  .todo{background:#fef3c7;color:#92400e;border-color:#d97706}
+
+  .s1{border-color:#16a34a;background:#f0fdf4}.s1 .sec-lbl{color:#15803d}
+  .s2{border-color:#ea580c;background:#fff7ed}.s2 .sec-lbl{color:#c2410c}
+  .s3{border-color:#7c3aed;background:#faf5ff}.s3 .sec-lbl{color:#6d28d9}
+  .s4{border-color:#0891b2;background:#ecfeff}.s4 .sec-lbl{color:#0e7490}
+  .s5{border-color:#e11d48;background:#fff1f2}.s5 .sec-lbl{color:#be123c}
+  .s6{border-color:#475569;background:#f8fafc}.s6 .sec-lbl{color:#334155}
+
+  /* ROWS */
+  .row{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+  .row2{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+
+  /* BOXES */
+  .bx{border-radius:7px;border-width:1.5px;border-style:solid;padding:8px 9px;flex-shrink:0;text-align:center}
+  .bx b{font-size:9.5px;display:block;line-height:1.35}
+  .bx small{font-size:8px;display:block;line-height:1.4;opacity:.85;margin-top:3px}
+
+  /* STEP CIRCLE */
+  .sp{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}
+  .num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;border-width:2px;border-style:solid;flex-shrink:0}
+  .nc{background:#dcfce7;border-color:#16a34a;color:#15803d}
+  .nt{background:#fef9c3;border-color:#d97706;color:#78350f}
+  .nd{background:#ede9fe;border-color:#7c3aed;color:#4c1d95}
+  .nl{background:#fce7f3;border-color:#db2777;color:#831843}
+  .ni{background:#cffafe;border-color:#0891b2;color:#164e63}
+  .no{background:#ffe4e6;border-color:#e11d48;color:#881337}
+  .nf{background:#dcfce7;border-color:#16a34a;color:#14532d}
+
+  /* ARROWS */
+  .ar{color:#94a3b8;font-size:18px;font-weight:700;flex-shrink:0;line-height:1}
+  .ar-feed{color:#f59e0b;font-size:14px;font-weight:700;flex-shrink:0}
+
+  /* COLOURS */
+  .green{background:#dcfce7;border-color:#16a34a;color:#14532d}
+  .amber{background:#fef3c7;border-color:#d97706;color:#78350f}
+  .orange{background:#fed7aa;border-color:#ea580c;color:#7c2d12}
+  .yel{background:#fef9c3;border-color:#ca8a04;color:#713f12}
+  .slate{background:#e2e8f0;border-color:#475569;color:#1e293b}
+  .silver{background:#f1f5f9;border-color:#94a3b8;color:#334155}
+  .purple{background:#ede9fe;border-color:#7c3aed;color:#4c1d95}
+  .dpurp{background:#ddd6fe;border-color:#5b21b6;color:#3b0764}
+  .pink{background:#fce7f3;border-color:#db2777;color:#831843}
+  .cyan{background:#cffafe;border-color:#0891b2;color:#164e63}
+  .rose{background:#ffe4e6;border-color:#e11d48;color:#881337}
+  .human{background:#fef9c3;border-color:#f59e0b;color:#78350f}
+
+  /* FEEDBACK BOX */
+  .fb-banner{background:#fffbeb;border:2px dashed #f59e0b;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:8px;color:#92400e;font-weight:700;line-height:1.6}
+  .fb-banner span{font-size:10px;margin-right:6px}
+
+  /* BOTTOM ROW */
+  .half{display:inline-flex;gap:8px;width:calc(50% - 4px);vertical-align:top}
+
+  /* PRINT */
+  @media print{body{padding:4px}.sec{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<h1>CS611-MLE &middot; Group 2 &middot; Harmful Video Duplicate Detection &mdash; MLOps Pipeline v2</h1>
+<p class="sub">Step numbers 1&ndash;17 match project proposal IDs exactly &nbsp;|&nbsp; Green = completed &nbsp;|&nbsp; Amber = to build</p>
+
+<div class="change-banner">
+  v2 Changes (2025-06-09 architecture review): &nbsp;
+  ALLOW threshold lowered <s>0.40</s> &rarr; <b>0.30</b> &nbsp;|&nbsp;
+  MLflow promotion gate: <s>val_f1 &ge; 0.80</s> &rarr; <b>recall &ge; 0.90 AND precision &ge; 0.85</b> &nbsp;|&nbsp;
+  Added <b>Human Reviewer Feedback Loop</b> &nbsp;|&nbsp;
+  SQLite &rarr; <b>PostgreSQL</b> for prediction logging
+</div>
+
+<!-- ═══ SECTION A: Steps 1-3 ═══ -->
+<div class="sec s1">
+  <div class="sec-hdr">
+    <span class="sec-lbl">Steps 1&ndash;3 &middot; Project Setup, Synthetic Data &amp; Preprocessing</span>
+    <span class="badge done">&#10003; COMPLETED</span>
+  </div>
+  <div class="row">
+    <div class="sp"><span class="num nc">1</span></div>
+    <div class="bx green" style="width:155px;min-height:72px"><b>Project Structure</b><small>data/ src/ models/<br>Dockerfile &middot; Makefile</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nc">2</span></div>
+    <div class="bx green" style="width:170px;min-height:72px"><b>Synthetic Data Gen</b><small>generate_data.py<br>400 videos &middot; 6 snapshots</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nc">3a</span></div>
+    <div class="bx silver" style="width:145px;min-height:72px"><b>Bronze</b><small>Raw ingestion<br>CSV &rarr; Parquet</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="bx silver" style="width:145px;min-height:72px"><b>Silver</b><small>Type cast &middot; clean<br>no imputation</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nc">3b</span></div>
+    <div class="bx yel" style="width:195px;min-height:72px"><b>Gold + Split</b><small>Impute &middot; one-hot &middot; join<br>35 features &middot; 80/10/10</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="bx yel" style="width:180px;min-height:72px"><b>Feature Store &#10003;</b><small>train/val/test parquet<br>feature_manifest.json</small></div>
+  </div>
+</div>
+
+<!-- ═══ SECTION B: Step 4 ═══ -->
+<div class="sec s2">
+  <div class="sec-hdr">
+    <span class="sec-lbl">Step 4 &middot; Harmful Detection Model Training</span>
+    <span class="badge todo">TO BUILD NEXT</span>
+    <span style="font-size:8px;color:#888">train_model.py &middot; Airflow DAG 2</span>
+  </div>
+  <div class="row">
+    <div class="sp"><span class="num nt">4a</span></div>
+    <div class="bx orange" style="width:195px;min-height:88px"><b>Sentence Transformer</b><small>all-MiniLM-L6-v2<br>384-dim embeddings<br>Input: combined_text</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nt">4b</span></div>
+    <div class="bx orange" style="width:195px;min-height:88px"><b>Logistic Regression</b><small>C=1.0 &middot; lbfgs<br>384+35=419 features<br>harmful/clean + P</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nt">4c</span></div>
+    <div class="bx yel" style="width:215px;min-height:88px"><b>Model Evaluation</b><small>Accuracy &middot; F1<br>Recall &middot; Precision<br>ROC-AUC (val + test)</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nt">4d</span></div>
+    <div class="bx slate" style="width:235px;min-height:88px"><b>MLflow Registry</b><small>Gate: <b>recall &ge; 0.90</b><br><b>AND precision &ge; 0.85</b><br>harmful_video_detector</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="bx green" style="width:185px;min-height:88px"><b>Production Model</b><small>harmful_video_detector<br>Production stage<br>localhost:5000</small></div>
+  </div>
+</div>
+
+<!-- ═══ SECTION C: Steps 5-9 ═══ -->
+<div class="sec s3">
+  <div class="sec-hdr">
+    <span class="sec-lbl">Steps 5&ndash;9 &middot; Duplicate Detection Engine</span>
+    <span class="badge todo">TO BUILD</span>
+    <span style="font-size:8px;color:#888">src/matching/ &middot; src/scoring/</span>
+  </div>
+  <div class="row">
+    <div class="sp"><span class="num nd">5</span></div>
+    <div class="bx purple" style="width:235px;min-height:90px"><b>Step 5: Text Matching</b><small>FAISS index of embeddings<br>Top-K candidate retrieval<br>text_score &times;0.45</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nd">6</span></div>
+    <div class="bx purple" style="width:215px;min-height:90px"><b>Step 6: OCR Scoring</b><small>font &middot; location<br>contrast &middot; density<br>ocr_score &times;0.20</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nd">7</span></div>
+    <div class="bx purple" style="width:215px;min-height:90px"><b>Step 7: ASR Scoring</b><small>pace &middot; volume<br>confidence &middot; silence<br>asr_score &times;0.20</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nd">8</span></div>
+    <div class="bx purple" style="width:215px;min-height:90px"><b>Step 8: Metadata Scoring</b><small>user &middot; device<br>audio_id &middot; region<br>meta_score &times;0.15</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num nd">9</span></div>
+    <div class="bx dpurp" style="width:235px;min-height:90px"><b>Step 9: Composite Score</b><small>text&times;0.45 + ocr&times;0.20<br>+ asr&times;0.20 + meta&times;0.15<br>final_score (0&ndash;1)</small></div>
+  </div>
+</div>
+
+<!-- ═══ SECTION D: Steps 10-12 ═══ -->
+<div class="sec s4">
+  <div class="sec-hdr">
+    <span class="sec-lbl">Steps 10&ndash;12 &middot; LLM Verification + Inference + Dashboard</span>
+    <span class="badge todo">TO BUILD</span>
+    <span style="font-size:8px;color:#888">Airflow DAG 3 + Streamlit</span>
+  </div>
+  <div class="row">
+    <div class="sp"><span class="num nl">10</span></div>
+    <div class="bx pink" style="width:285px;min-height:100px">
+      <b>Step 10: Ollama LLM Verifier</b>
+      <small>
+        score &lt; <b>0.30</b> &rarr; ALLOW <span style="color:#16a34a;font-weight:700">(threshold updated)</span><br>
+        0.30 &ndash; 0.59 &rarr; HUMAN REVIEW<br>
+        &ge; 0.60 &rarr; invoke Ollama<br>
+        &nbsp;&nbsp; llm &ge; 0.70 &rarr; REMOVE<br>
+        &nbsp;&nbsp; 0.50&ndash;0.69 &rarr; REVIEW &nbsp; &lt;0.50 &rarr; ALLOW
+      </small>
+    </div>
+    <span class="ar">&rarr;</span>
+    <div class="bx green" style="width:150px;min-height:100px"><b>Final Decision</b><small>&#9679; REMOVE<br>&#9679; HUMAN REVIEW<br>&#9679; ALLOW</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num ni">11</span></div>
+    <div class="bx cyan" style="width:235px;min-height:100px"><b>Step 11: Inference Pipeline</b><small>run_inference.py<br>Airflow DAG 3 &middot; batch<br>FAISS index rebuilt on retrain</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="sp"><span class="num ni">12</span></div>
+    <div class="bx cyan" style="width:250px;min-height:100px"><b>Step 12: Streamlit Dashboard</b><small>Trust &amp; Safety analyst UI<br>All scores + SHAP explanation<br>Action buttons</small></div>
+    <span class="ar">&rarr;</span>
+    <div class="bx human" style="width:220px;min-height:100px"><b>Human Reviewer</b><small>Reviews REVIEW cases<br>Override: REMOVE / ALLOW<br><b style="color:#d97706">Verdict fed back to training</b></small></div>
+  </div>
+
+  <!-- FEEDBACK LOOP BANNER -->
+  <div class="fb-banner">
+    <span>&#8635;</span>
+    <b>Feedback Loop (NEW):</b> Human reviewer verdicts (REMOVE/ALLOW overrides) are written to the
+    Prediction Log &rarr; ingested into the Silver layer as new labelled examples &rarr;
+    triggers DAG 2 (model retraining). This closes the loop so the model learns from real analyst decisions,
+    not just the original synthetic labels.
+  </div>
+</div>
+
+<!-- ═══ SECTION E: Steps 13-14 + F: Steps 15-17 (side by side) ═══ -->
+<div style="display:flex;gap:8px;margin-bottom:8px">
+
+  <div class="sec s5" style="flex:1;min-width:0">
+    <div class="sec-hdr">
+      <span class="sec-lbl">Steps 13&ndash;14 &middot; Logging &amp; Monitoring</span>
+      <span class="badge todo">TO BUILD</span>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sp"><span class="num no">13</span></div>
+        <div class="bx rose" style="min-width:220px;min-height:80px"><b>Step 13: Prediction Logging</b><small>PostgreSQL (replaces SQLite)<br>video_id &middot; all scores &middot; decision<br>reviewer verdict &middot; timestamp</small></div>
+      </div>
+      <span class="ar">&rarr;</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sp"><span class="num no">14</span></div>
+        <div class="bx rose" style="min-width:240px;min-height:80px"><b>Step 14: Monitoring + Drift</b><small>Harmful/dup rate &middot; score drift<br>Concept drift (PSI on predictions)<br>OCR/ASR missing &middot; LLM failures</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec s6" style="flex:1;min-width:0">
+    <div class="sec-hdr">
+      <span class="sec-lbl">Steps 15&ndash;17 &middot; Infrastructure</span>
+      <span class="badge todo">TO BUILD</span>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sp"><span class="num nf">15</span></div>
+        <div class="bx slate" style="min-width:175px;min-height:80px"><b>Step 15: Docker Compose</b><small>pipeline &middot; mlflow &middot; airflow<br>streamlit &middot; ollama &middot; postgres</small></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sp"><span class="num nf">16</span></div>
+        <div class="bx slate" style="min-width:175px;min-height:80px"><b>Step 16: Makefile / DAGs</b><small>DAG1:data &middot; DAG2:train<br>DAG3:inference</small></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div class="sp"><span class="num nf">17</span></div>
+        <div class="bx slate" style="min-width:175px;min-height:80px"><b>Step 17: README &amp; Docs</b><small>Architecture &middot; setup<br>deployment &middot; monitoring</small></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- LEGEND -->
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:8px">
+  <span style="font-weight:700;color:#334155">Legend:</span>
+  <span style="background:#dcfce7;border:1px solid #16a34a;color:#15803d;padding:2px 8px;border-radius:12px;font-weight:600">Completed (Steps 1-3)</span>
+  <span style="background:#fef3c7;border:1px solid #d97706;color:#78350f;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Step 4 Training</span>
+  <span style="background:#ede9fe;border:1px solid #7c3aed;color:#4c1d95;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Steps 5-9 Detection</span>
+  <span style="background:#fce7f3;border:1px solid #db2777;color:#831843;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Step 10 LLM</span>
+  <span style="background:#cffafe;border:1px solid #0891b2;color:#164e63;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Steps 11-12 Inference</span>
+  <span style="background:#ffe4e6;border:1px solid #e11d48;color:#881337;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Steps 13-14 Logging</span>
+  <span style="background:#e2e8f0;border:1px solid #475569;color:#1e293b;padding:2px 8px;border-radius:12px;font-weight:600">To Build — Steps 15-17 Infra</span>
+  <span style="background:#fffbeb;border:1.5px dashed #f59e0b;color:#92400e;padding:2px 8px;border-radius:12px;font-weight:600">&#8635; Feedback Loop</span>
+</div>
+
+</body>
+</html>
