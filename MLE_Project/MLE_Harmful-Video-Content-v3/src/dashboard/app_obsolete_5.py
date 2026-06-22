@@ -1,7 +1,5 @@
 import os
 import json
-import difflib
-import html
 from datetime import datetime
 
 import numpy as np
@@ -73,33 +71,6 @@ def _parse_pair(pair):
 def _txt(d, key):
     v = d.get(key) if d else None
     return v if isinstance(v, str) and v.strip() else "—"
-
-
-_DIFF_WRAP = ("font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
-              "white-space:pre-wrap;word-break:break-word;background:#f8fafc;"
-              "border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:0.85em;"
-              "line-height:1.5")
-_HL = "background:#fde68a;border-radius:2px;padding:0 1px"
-
-
-def diff_pair(a, b):
-    """Return (a_html, b_html) with the characters that differ highlighted, so
-    the evasion (leetspeak / OCR misread / homophone) is visible at a glance."""
-    a, b = a or "", b or ""
-    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
-    left, right = [], []
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        sa, sb = html.escape(a[i1:i2]), html.escape(b[j1:j2])
-        if tag == "equal":
-            left.append(sa)
-            right.append(sb)
-        else:
-            if sa:
-                left.append(f"<span style='{_HL}'>{sa}</span>")
-            if sb:
-                right.append(f"<span style='{_HL}'>{sb}</span>")
-    return (f"<div style='{_DIFF_WRAP}'>{''.join(left)}</div>",
-            f"<div style='{_DIFF_WRAP}'>{''.join(right)}</div>")
 
 
 def score_bar(label, value, weight=None):
@@ -267,9 +238,8 @@ def main():
             st.markdown(f"**title:** {_txt(qv, 'title_text')}")
             st.markdown(f"**ocr:** {_txt(qv, 'ocr_text')}")
             st.markdown(f"**asr:** {_txt(qv, 'asr_text')}")
-        st.caption("Left is this video, right is the matched seed; highlighted "
-                   "characters are where they differ — that's the evasion. The "
-                   "analyst reviews the full cluster and assigns lanes.")
+        st.caption("Left is this video, right is the matched seed — the two mediums "
+                   "that matched. The analyst reviews the full cluster and assigns lanes.")
 
         def render_candidate(i, c):
             qm, cm = _parse_pair(c["pair"])
@@ -280,13 +250,12 @@ def main():
                 f"{c.get('duplicate_type') or 'below gate'} · {tag}**"
             )
             cc1, cc2 = st.columns(2)
-            q_html, s_html = diff_pair(_txt(qv, f"{qm}_text"), _txt(sv, f"{cm}_text"))
             with cc1:
                 st.caption(f"this video — {qm}")
-                st.markdown(q_html, unsafe_allow_html=True)
+                st.code(_txt(qv, f"{qm}_text"), language=None)
             with cc2:
                 st.caption(f"matched seed — {cm}")
-                st.markdown(s_html, unsafe_allow_html=True)
+                st.code(_txt(sv, f"{cm}_text"), language=None)
 
         render_candidate(1, cands[0])  # primary match, always visible
         if len(cands) > 1:
