@@ -21,7 +21,7 @@ with DAG(
 
     generate = BashOperator(
         task_id="generate_synthetic_data",
-        bash_command=f"cd {PROJECT} && python generate_data.py",
+        bash_command=f"cd {PROJECT} && USE_CORPUS=1 python generate_data.py",
     )
 
     medallion = BashOperator(
