@@ -30,7 +30,9 @@ services:
         --host 0.0.0.0
         --port 5000
         --backend-store-uri postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-pipeline}@postgres:5432/${MLFLOW_DB:-mlflow_db}
-        --default-artifact-root /mlflow/artifacts
+        --serve-artifacts
+        --artifacts-destination /mlflow/artifacts
+        --default-artifact-root mlflow-artifacts:/
     ports:
       - "5000:5000"
     volumes:
@@ -54,7 +56,9 @@ services:
         condition: service_healthy
 
   airflow:
-    image: apache/airflow:2.9.1-python3.12
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     container_name: harmful_video_airflow
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor

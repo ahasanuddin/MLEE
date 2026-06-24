@@ -20,7 +20,7 @@ from src.evaluate_model import run_evaluation
 
 def register_model():
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    mlflow.set_experiment("harmful_video_detection")
+    mlflow.set_experiment("harmful_video_detection_v2")
 
     model, scaler = load_artifacts()
     all_metrics = run_evaluation()

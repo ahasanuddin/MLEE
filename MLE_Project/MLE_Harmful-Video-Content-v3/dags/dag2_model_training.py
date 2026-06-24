@@ -35,15 +35,4 @@ with DAG(
         bash_command=f"cd {PROJECT} && python -m src.mlflow_registry",
     )
 
-    build_faiss = BashOperator(
-        task_id="build_faiss_index",
-        bash_command=f"cd {PROJECT} && python -c \""
-            "import pandas as pd, os;"
-            "from src.matching.text_matching import TextMatcher;"
-            "df = pd.read_parquet('datamart/gold/splits/train.parquet');"
-            "seed = df[df['label']==1][['video_id','combined_text']];"
-            "TextMatcher().build_index(seed).save_index()"
-            "\"",
-    )
-
-    embed >> train >> register >> build_faiss
+    embed >> train >> register
