@@ -1,5 +1,7 @@
 import os
 import json
+import difflib
+import html
 from datetime import datetime
 
 import numpy as np
@@ -11,8 +13,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.config import REPORTS_DIR, MODELS_DIR, POSTGRES_DSN, load_manifest
-from src.persistence.prediction_logger import log_prediction, log_reviewer_verdict
+from src.config import REPORTS_DIR, MODELS_DIR, load_manifest
+from src.persistence.prediction_logger import log_reviewer_verdict
 
 st.set_page_config(
     page_title="Harmful Video Duplicate Detection",
@@ -43,9 +45,66 @@ def load_results(split_name="test"):
     return pd.read_parquet(path)
 
 
+@st.cache_data(show_spinner="Loading video text...")
+def load_video_texts():
+    """video_id -> {title_text, ocr_text, asr_text} across all splits, so we can
+    show the actual matched text for both the query video and its seed matches."""
+    base = os.path.join(os.path.dirname(REPORTS_DIR), "datamart", "gold", "splits")
+    frames = []
+    for sp in ("train", "val", "test"):
+        p = os.path.join(base, f"{sp}.parquet")
+        if os.path.exists(p):
+            frames.append(pd.read_parquet(p, columns=["video_id", "title_text", "ocr_text", "asr_text"]))
+    if not frames:
+        return {}
+    allrows = pd.concat(frames, ignore_index=True).drop_duplicates("video_id")
+    return allrows.set_index("video_id").to_dict("index")
+
+
+def _parse_pair(pair):
+    """'q.title<->c.ocr' -> ('title', 'ocr')."""
+    try:
+        left, right = pair.split("<->")
+        return left.split(".", 1)[1], right.split(".", 1)[1]
+    except Exception:
+        return "title", "title"
+
+
+def _txt(d, key):
+    v = d.get(key) if d else None
+    return v if isinstance(v, str) and v.strip() else "—"
+
+
+_DIFF_WRAP = ("font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
+              "white-space:pre-wrap;word-break:break-word;background:#f8fafc;"
+              "border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:0.85em;"
+              "line-height:1.5")
+_HL = "background:#fde68a;border-radius:2px;padding:0 1px"
+
+
+def diff_pair(a, b):
+    """Return (a_html, b_html) with the characters that differ highlighted, so
+    the evasion (leetspeak / OCR misread / homophone) is visible at a glance."""
+    a, b = a or "", b or ""
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    left, right = [], []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        sa, sb = html.escape(a[i1:i2]), html.escape(b[j1:j2])
+        if tag == "equal":
+            left.append(sa)
+            right.append(sb)
+        else:
+            if sa:
+                left.append(f"<span style='{_HL}'>{sa}</span>")
+            if sb:
+                right.append(f"<span style='{_HL}'>{sb}</span>")
+    return (f"<div style='{_DIFF_WRAP}'>{''.join(left)}</div>",
+            f"<div style='{_DIFF_WRAP}'>{''.join(right)}</div>")
+
+
 def score_bar(label, value, weight=None):
     wtxt = f" (weight {weight:.0%})" if weight is not None else ""
-    if value is None:
+    if value is None or pd.isna(value):
         st.markdown(f"**{label}**{wtxt}: _not applicable_")
         return
     colour = "#ef4444" if value >= 0.60 else "#f59e0b" if value >= 0.30 else "#22c55e"
@@ -83,7 +142,7 @@ def shap_explanation(model, scaler, row_features, manifest):
         ax.set_title("Top 10 feature contributions")
         fig.tight_layout()
         return fig
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -132,7 +191,7 @@ def main():
         )
     with col3:
         mc = row.get("match_confidence")
-        if mc is not None:
+        if mc is not None and not pd.isna(mc):
             st.metric("Match Confidence", f"{mc:.3f}")
 
     st.divider()
@@ -152,7 +211,7 @@ def main():
             st.markdown(f"**Cross-medium match:** `{row.get('medium_transition')}`")
         st.markdown(f"**Layer 1 harmful probability:** {row.get('harmful_prob', 0):.3f}")
         llm = row.get("llm_score")
-        if llm is not None:
+        if llm is not None and not pd.isna(llm):
             st.markdown(f"**LLM verification score:** {llm:.3f}")
         st.markdown(f"**Reasoning:** _{row.get('reasoning', '')}_")
         matched = row.get("matched_seed_id")
@@ -160,19 +219,75 @@ def main():
             st.markdown(f"**Matched seed:** `{matched}` ({row.get('best_pair', '')})")
 
     with col_detail:
-        st.subheader("SHAP Explanation")
-        train_df = pd.read_parquet(os.path.join(
-            os.path.dirname(REPORTS_DIR), "datamart", "gold", "splits", "train.parquet"
-        )) if os.path.exists(os.path.join(
-            os.path.dirname(REPORTS_DIR), "datamart", "gold", "splits", "train.parquet"
-        )) else None
+        cm_json = row.get("candidate_matches")
+        if cm_json:
+            try:
+                cands = json.loads(cm_json)
+            except (TypeError, ValueError):
+                cands = []
+            if cands:
+                st.subheader(f"Candidate duplicates ({row.get('n_candidates', 0)} above gate)")
+                tbl = pd.DataFrame([{
+                    "rank": i + 1,
+                    "seed": c["seed_id"],
+                    "text": round(c["text_score"], 3),
+                    "medium pair": c["pair"],
+                    "type": c["duplicate_type"] or "— below gate",
+                } for i, c in enumerate(cands)])
+                st.dataframe(tbl, hide_index=True, use_container_width=True)
+                st.caption("Ranked by text similarity. The top row is the primary "
+                           "match that drives the decision; the rest are other "
+                           "potential duplicates for the reviewer to check.")
 
+        st.subheader("SHAP Explanation")
         row_features = row.copy()
         fig = shap_explanation(model, scaler, row_features, manifest)
         if fig:
             st.pyplot(fig)
         else:
             st.info("SHAP explanation unavailable (run inference first to generate embeddings).")
+
+    # ---- matched text: see WHY these videos matched, not just the IDs/scores ----
+    try:
+        cands = json.loads(row.get("candidate_matches") or "[]")
+    except (TypeError, ValueError):
+        cands = []
+    if cands:
+        texts = load_video_texts()
+        qv = texts.get(video_id, {})
+        st.divider()
+        st.subheader(f"Matched text ({len(cands)} above gate)")
+        with st.expander("This video's text (all mediums)", expanded=False):
+            st.markdown(f"**title:** {_txt(qv, 'title_text')}")
+            st.markdown(f"**ocr:** {_txt(qv, 'ocr_text')}")
+            st.markdown(f"**asr:** {_txt(qv, 'asr_text')}")
+        st.caption("Left is this video, right is the matched seed; highlighted "
+                   "characters are where they differ — that's the evasion. The "
+                   "analyst reviews the full cluster and assigns lanes.")
+
+        def render_candidate(i, c):
+            qm, cm = _parse_pair(c["pair"])
+            sv = texts.get(c["seed_id"], {})
+            tag = "cross-medium" if c.get("is_cross_medium") else "same-medium"
+            st.markdown(
+                f"**#{i} · seed `{c['seed_id']}` · text {c['text_score']:.3f} · "
+                f"{c.get('duplicate_type') or 'below gate'} · {tag}**"
+            )
+            cc1, cc2 = st.columns(2)
+            q_html, s_html = diff_pair(_txt(qv, f"{qm}_text"), _txt(sv, f"{cm}_text"))
+            with cc1:
+                st.caption(f"this video — {qm}")
+                st.markdown(q_html, unsafe_allow_html=True)
+            with cc2:
+                st.caption(f"matched seed — {cm}")
+                st.markdown(s_html, unsafe_allow_html=True)
+
+        render_candidate(1, cands[0])  # primary match, always visible
+        if len(cands) > 1:
+            with st.expander(f"Show the other {len(cands) - 1} match(es)"):
+                for i, c in enumerate(cands[1:], start=2):
+                    render_candidate(i, c)
+                    st.divider()
 
     st.divider()
     st.subheader("Reviewer Action")

@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 
@@ -9,8 +10,13 @@ from src.matching.text_matching import GridTextMatcher
 from src.scoring.ocr_scoring import score_ocr
 from src.scoring.asr_scoring import score_asr
 from src.scoring.metadata_scoring import score_metadata
-from src.scoring.composite import score_match
+from src.scoring.composite import score_match, classify_duplicate_type
 from src.llm_verifier import decide
+
+# Candidates surfaced per video = ALL matches above the text gate, ranked.
+# Analysts review the full cluster and decide lane assignment. Set an int to cap
+# the list if a review page ever gets unwieldy; None = show every above-gate match.
+MAX_CANDIDATES = None
 
 MEDIUM_TEXT_COLS = ["video_id", "title_text", "ocr_text", "asr_text"]
 
@@ -54,6 +60,33 @@ def _query_texts(row):
     return {m: row.get(m) for m in ("title_text", "ocr_text", "asr_text")}
 
 
+def _same_medium_feature(match, row_dict, seed_row):
+    """Same-medium feature similarity for a match; None for title/cross-medium."""
+    if match["is_cross_medium"]:
+        return None
+    m = match["q_medium"]
+    if m == "ocr":
+        return score_ocr(row_to_ocr_dict(row_dict), row_to_ocr_dict(seed_row))
+    if m == "asr":
+        return score_asr(row_to_asr_dict(row_dict), row_to_asr_dict(seed_row))
+    return None
+
+
+def _candidate(match, row_dict, seed_lookup):
+    """Compact candidate-duplicate record for the reviewer (not the decision)."""
+    seed_row = seed_lookup.get(match["seed_video_id"], {})
+    feat = _same_medium_feature(match, row_dict, seed_row)
+    dtype = (classify_duplicate_type(match["is_cross_medium"], feat)
+             if match["text_score"] >= TEXT_CUTOFF else None)
+    return {
+        "seed_id": match["seed_video_id"],
+        "text_score": match["text_score"],
+        "pair": f"q.{match['q_medium']}<->c.{match['c_medium']}",
+        "is_cross_medium": match["is_cross_medium"],
+        "duplicate_type": dtype,
+    }
+
+
 def _blank(vid, layer1_label, harmful_prob, decision, reasoning, lane=None, priority=None):
     return {
         "video_id": vid, "layer1_label": layer1_label, "harmful_prob": harmful_prob,
@@ -62,6 +95,7 @@ def _blank(vid, layer1_label, harmful_prob, decision, reasoning, lane=None, prio
         "metadata_score": None, "match_confidence": None, "duplicate_type": None,
         "lane": lane, "decision": decision, "priority": priority,
         "llm_score": None, "reasoning": reasoning,
+        "n_candidates": 0, "candidate_matches": "[]",
     }
 
 
@@ -85,33 +119,36 @@ def run_inference(input_df, seed_df, matcher, model, scaler, manifest):
             results.append(_blank(vid, "clean", harmful_prob, "ALLOW", "layer1 classified as clean"))
             continue
 
-        best = matcher.match(_query_texts(row))
-        if best is None:
+        matches = matcher.match(_query_texts(row))  # all seeds, ranked best first
+        if not matches:
             results.append(_blank(vid, "harmful", harmful_prob, "HUMAN REVIEW",
                                   "harmful but no seed match", lane="investigation", priority="normal"))
             continue
 
+        row_dict = row.to_dict()
+        best = matches[0]
         seed_row = seed_lookup.get(best["seed_video_id"], {})
 
         # same-medium feature score only; None for title or cross-medium matches
-        feature_score = None
-        if not best["is_cross_medium"]:
-            m = best["q_medium"]
-            if m == "ocr":
-                feature_score = score_ocr(row_to_ocr_dict(row.to_dict()), row_to_ocr_dict(seed_row))
-            elif m == "asr":
-                feature_score = score_asr(row_to_asr_dict(row.to_dict()), row_to_asr_dict(seed_row))
+        feature_score = _same_medium_feature(best, row_dict, seed_row)
 
         # metadata only consulted once a text match clears the gate
         metadata_score = None
         if best["text_score"] >= TEXT_CUTOFF:
-            metadata_score = score_metadata(row_to_meta_dict(row.to_dict()), row_to_meta_dict(seed_row))
+            metadata_score = score_metadata(row_to_meta_dict(row_dict), row_to_meta_dict(seed_row))
 
         sm = score_match(best["text_score"], metadata_score, best["is_cross_medium"], feature_score)
         verdict = decide(sm["match_confidence"], video_text=row.get("combined_text", ""),
                          matched_seed_text=seed_row.get("combined_text", ""))
         lane = sm["lane"] or "investigation"
         priority = verdict.get("priority") or ("urgent" if sm["duplicate_type"] in ("cross_medium", "re_authored") else "normal")
+
+        # full candidate cluster for the reviewer: every match above the gate
+        above_gate = [m for m in matches if m["text_score"] >= TEXT_CUTOFF]
+        if MAX_CANDIDATES:
+            above_gate = above_gate[:MAX_CANDIDATES]
+        candidates = [_candidate(m, row_dict, seed_lookup) for m in above_gate]
+        n_candidates = len(candidates)
 
         results.append({
             "video_id": vid, "layer1_label": "harmful", "harmful_prob": harmful_prob,
@@ -124,6 +161,7 @@ def run_inference(input_df, seed_df, matcher, model, scaler, manifest):
             "duplicate_type": sm["duplicate_type"], "lane": lane,
             "decision": verdict["decision"], "priority": verdict.get("priority") or priority,
             "llm_score": verdict["llm_score"], "reasoning": sm["reason"],
+            "n_candidates": n_candidates, "candidate_matches": json.dumps(candidates),
         })
 
     return pd.DataFrame(results)

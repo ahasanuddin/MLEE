@@ -1,0 +1,45 @@
+x-airflow-common-env: &airflow-common-env
+  AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+  AIRFLOW__CORE__FERNET_KEY: 'R3WD9qD_mGhSVpNZ9_gsJCoAAlyetriX8DtUgzuufvE='
+  AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+
+x-airflow-common-volumes: &airflow-common-volumes
+  - airflow_data:/opt/airflow
+  - ./dags:/opt/airflow/dags
+  - ./scripts:/opt/airflow/scripts
+  - ./data:/opt/airflow/scripts/data
+  - ./datamart:/opt/airflow/scripts/datamart
+  - ./model_bank:/opt/airflow/scripts/model_bank
+
+services:
+  airflow-init:
+    build: .
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    entrypoint: >
+      /bin/bash -c "airflow db init &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true"
+
+  airflow-webserver:
+    build: .
+    depends_on:
+      - airflow-init
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    build: .
+    depends_on:
+      - airflow-init
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    command: scheduler
+
+volumes:
+  airflow_data:
